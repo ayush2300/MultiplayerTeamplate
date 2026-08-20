@@ -1,6 +1,0 @@
-{
-  "_readme": "Restrict scanning to specific folders per type. Leave a list empty ([]) to scan all of Assets for that type. Paths are relative to your Unity project root (the folder that contains Assets), e.g. 'Assets/Scripts'. You can list more than one folder per type.",
-  "scripts_dirs": ["Assets/Scripts"],
-  "prefabs_dirs": ["Assets/Prefabs"],
-  "scenes_dirs": ["Assets/Scenes"]
-}
