@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Project Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08111d;
+  --grid-fine: rgba(94,217,255,0.055);
+  --grid-strong: rgba(94,217,255,0.11);
+  --panel:#0f2136;
+  --panel-2:#132843;
+  --border: rgba(94,217,255,0.20);
+  --border-strong: rgba(94,217,255,0.42);
+  --text:#e8f4fb;
+  --text-dim:#82a8c6;
+  --text-faint:#4d7091;
+  --script:#57e6d9;
+  --script-soft: rgba(87,230,217,0.14);
+  --prefab:#f6c453;
+  --prefab-soft: rgba(246,196,83,0.14);
+  --scene:#ff7aa8;
+  --scene-soft: rgba(255,122,168,0.14);
+  --note:#ffe066;
+  --note-text:#33280a;
+  --trace: rgba(126,196,255,0.55);
+  --danger:#ff6b6b;
+  --radius:10px;
+  --font-display:'Space Grotesk','Segoe UI',system-ui,sans-serif;
+  --font-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--font-body);overflow:hidden;}
+#app{display:flex;flex-direction:column;height:100vh;}
+
+/* ---------- Toolbar ---------- */
+#toolbar{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;background:linear-gradient(180deg,#0d1c2d,#0a1626);
+  border-bottom:1px solid var(--border);flex-wrap:wrap;z-index:20;
+}
+#toolbar .brand{font-family:var(--font-display);font-weight:700;font-size:15px;letter-spacing:.02em;display:flex;align-items:center;gap:8px;margin-right:6px;white-space:nowrap;}
+#toolbar .brand .dot{width:8px;height:8px;border-radius:2px;background:var(--script);box-shadow:0 0 8px var(--script);}
+#toolbar .proj{color:var(--text-dim);font-size:12px;font-family:var(--font-mono);border-left:1px solid var(--border);padding-left:10px;margin-right:4px;white-space:nowrap;}
+.btn{
+  background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  font-family:var(--font-body);font-size:12.5px;padding:7px 12px;border-radius:8px;
+  cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;transition:.12s ease;
+}
+.btn:hover{border-color:var(--border-strong);background:#173252;}
+.btn:active{transform:translateY(1px);}
+.btn.primary{background:var(--script-soft);border-color:var(--script);color:var(--script);}
+.btn.primary:hover{background:rgba(87,230,217,0.24);}
+.btn svg{width:13px;height:13px;flex:none;}
+#search{
+  background:var(--panel);border:1px solid var(--border);color:var(--text);
+  padding:7px 10px;border-radius:8px;font-size:12.5px;font-family:var(--font-body);width:170px;
+}
+#search::placeholder{color:var(--text-faint);}
+#zoom-controls{display:flex;align-items:center;gap:4px;margin-left:auto;}
+#zoom-pct{font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim);width:42px;text-align:center;}
+.legend{display:flex;align-items:center;gap:8px;margin-left:4px;}
+.legend-chip{
+  display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-dim);
+  border:1px solid transparent;padding:4px 8px;border-radius:20px;cursor:pointer;user-select:none;
+}
+.legend-chip.off{opacity:.35;}
+.legend-chip .swatch{width:8px;height:8px;border-radius:2px;}
+.legend-chip:hover{background:var(--panel-2);}
+
+/* ---------- Canvas ---------- */
+#canvas-wrap{flex:1;position:relative;overflow:hidden;
+  background:
+    linear-gradient(rgba(8,17,29,.0), rgba(8,17,29,.0)),
+    repeating-linear-gradient(0deg, var(--grid-fine) 0 1px, transparent 1px 20px),
+    repeating-linear-gradient(90deg, var(--grid-fine) 0 1px, transparent 1px 20px),
+    repeating-linear-gradient(0deg, var(--grid-strong) 0 1px, transparent 1px 100px),
+    repeating-linear-gradient(90deg, var(--grid-strong) 0 1px, transparent 1px 100px);
+  cursor:grab;
+}
+#canvas-wrap.panning{cursor:grabbing;}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;}
+#edges-svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none;}
+
+.node{
+  position:absolute;width:250px;min-height:80px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--panel);
+  padding:10px 12px;cursor:grab;user-select:none;
+  box-shadow:0 2px 14px rgba(0,0,0,.35);
+}
+.node:active{cursor:grabbing;}
+.node.dragging{box-shadow:0 8px 26px rgba(0,0,0,.55);z-index:5;}
+.node.dim{opacity:.16;}
+.node.match{box-shadow:0 0 0 2px var(--accent, var(--script)), 0 4px 20px rgba(0,0,0,.4);}
+.node.selected{box-shadow:0 0 0 2px #fff, 0 4px 20px rgba(0,0,0,.4);}
+
+.node-row{padding:7px 0;}
+.node-row + .node-row{border-top:1px solid rgba(148,197,255,.09);}
+.node-row.node-row-head{padding-top:0;display:flex;align-items:center;gap:6px;}
+.node-type-tag{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 5px;border-radius:4px;flex:none;
+}
+.node-name{font-family:var(--font-display);font-weight:600;font-size:13.5px;line-height:1.3;
+  white-space:normal;word-break:break-word;}
+.node-row.node-row-name{padding-bottom:0;}
+
+.node-script{border-color:rgba(87,230,217,0.35);} .node-script .node-type-tag{background:var(--script-soft);color:var(--script);}
+.node-prefab{border-color:rgba(246,196,83,0.35);} .node-prefab .node-type-tag{background:var(--prefab-soft);color:var(--prefab);}
+.node-scene{border-color:rgba(255,122,168,0.35);} .node-scene .node-type-tag{background:var(--scene-soft);color:var(--scene);}
+
+.node-note{
+  width:190px;min-height:140px;background:var(--note);color:var(--note-text);border:none;
+  border-radius:3px;box-shadow:0 6px 16px rgba(0,0,0,.4);padding:12px;
+}
+.node-note .note-text{font-size:13px;line-height:1.4;font-family:var(--font-body);outline:none;min-height:80px;white-space:pre-wrap;word-break:break-word;}
+.note-toolbar{display:flex;justify-content:flex-end;gap:6px;margin-top:8px;opacity:.55;}
+.note-toolbar button{background:rgba(0,0,0,.12);border:none;border-radius:4px;width:20px;height:20px;cursor:pointer;color:var(--note-text);font-size:12px;line-height:1;}
+.note-toolbar button:hover{background:rgba(0,0,0,.22);}
+
+
+/* ---------- Empty state ---------- */
+#empty-state{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 40%, rgba(20,45,70,.55), rgba(8,17,29,.9));
+  z-index:15;
+}
+#empty-state.hidden{display:none;}
+.empty-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:32px 36px;
+  max-width:440px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.empty-card h1{font-family:var(--font-display);font-size:20px;margin:0 0 8px;}
+.empty-card p{font-size:13px;color:var(--text-dim);line-height:1.6;margin:0 0 20px;}
+.empty-actions{display:flex;flex-direction:column;gap:10px;}
+.dropzone{
+  border:1.5px dashed var(--border-strong);border-radius:10px;padding:16px;font-size:12px;color:var(--text-faint);
+}
+.dropzone.hover{background:var(--script-soft);border-color:var(--script);color:var(--script);}
+#empty-error{
+  margin-top:16px;text-align:left;background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.4);
+  color:#ffb3b3;border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.6;
+}
+#empty-error.hidden{display:none;}
+#empty-error code{background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;font-family:var(--font-mono);color:#ffd7d7;}
+#empty-error strong{color:#fff;}
+
+/* ---------- Detail panel ---------- */
+#panel{
+  position:absolute;top:0;right:0;height:100%;width:340px;background:var(--panel);
+  border-left:1px solid var(--border);transform:translateX(100%);transition:transform .18s ease;
+  z-index:18;display:flex;flex-direction:column;
+}
+#panel.open{transform:translateX(0);}
+#panel-head{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 16px 10px;border-bottom:1px solid var(--border);}
+#panel-close{background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;padding:2px 6px;}
+#panel-close:hover{color:var(--text);}
+#panel-body{padding:14px 16px;overflow-y:auto;flex:1;}
+#panel-body label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);margin:16px 0 6px;}
+#panel-body label:first-child{margin-top:0;}
+#panel-desc{
+  width:100%;min-height:90px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:var(--font-body);font-size:12.5px;padding:8px;resize:vertical;
+}
+#panel-path{font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim);word-break:break-all;}
+.chip-list{display:flex;flex-direction:column;gap:6px;}
+.chip{
+  display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:6px;padding:6px 8px;font-size:12px;cursor:pointer;
+}
+.chip:hover{border-color:var(--border-strong);}
+.chip .swatch{width:7px;height:7px;border-radius:2px;flex:none;}
+.chip .empty-note{color:var(--text-faint);font-size:11.5px;font-style:italic;}
+
+/* ---------- Toast ---------- */
+#toast{
+  position:absolute;bottom:22px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:#0f2136;border:1px solid var(--border-strong);color:var(--text);
+  padding:9px 16px;border-radius:8px;font-size:12.5px;opacity:0;transition:.2s ease;z-index:30;pointer-events:none;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+#banner{
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  background:#1c3a22;border:1px solid #3f7a4c;color:#c8f5cf;font-size:12px;
+  padding:7px 14px;border-radius:20px;z-index:16;display:flex;align-items:center;gap:10px;
+}
+#banner button{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:inherit;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;}
+#banner.hidden{display:none;}
+#banner.demo{background:#3a3416;border-color:#8a7a2f;color:#f5e6a8;}
+
+.hidden-input{display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <div class="brand"><span class="dot"></span>Claude Project Map</div>
+    <div class="proj" id="proj-name">no file loaded</div>
+    <button class="btn primary" id="btn-open">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+      Open CLAUDE.md
+    </button>
+    <input type="file" id="file-input" class="hidden-input" accept=".md,text/markdown">
+    <button class="btn" id="btn-save">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+      Save
+    </button>
+    <button class="btn" id="btn-note">+ Sticky note</button>
+    <button class="btn" id="btn-reset-layout">Tidy layout</button>
+    <input type="text" id="search" placeholder="Search scripts, prefabs, scenes…">
+    <div class="legend" id="legend"></div>
+    <div id="zoom-controls">
+      <button class="btn" id="zoom-out">−</button>
+      <span id="zoom-pct">100%</span>
+      <button class="btn" id="zoom-in">+</button>
+      <button class="btn" id="zoom-fit">Fit</button>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <div id="banner" class="hidden"></div>
+    <div id="world">
+      <svg id="edges-svg"></svg>
+    </div>
+    <div id="empty-state">
+      <div class="empty-card">
+        <h1>Load your project map</h1>
+        <p>This reads the <code>CLAUDE.md</code> file generated by <code>generate_claude_md.py</code>
+        and turns it into a draggable, zoomable board of your scripts, prefabs, and scenes —
+        plus sticky notes for brainstorming.</p>
+        <div class="empty-actions">
+          <button class="btn primary" id="btn-open-2" style="justify-content:center;">Open CLAUDE.md</button>
+          <div class="dropzone" id="dropzone">…or drag &amp; drop CLAUDE.md here</div>
+          <button class="btn" id="btn-demo" style="justify-content:center;">Show me an example first</button>
+        </div>
+        <div id="empty-error" class="hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="panel-head">
+      <div>
+        <div class="node-type-tag" id="panel-type"></div>
+        <div style="font-family:var(--font-display);font-weight:600;font-size:16px;margin-top:6px;" id="panel-name"></div>
+      </div>
+      <button id="panel-close">✕</button>
+    </div>
+    <div id="panel-body"></div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+const CARD_W = 250, CARD_H = 120;
+const COL_X = { scene: 80, prefab: 460, script: 840 };
+const ROW_START = 80, ROW_GAP = 110;
+const TYPE_COLOR = { script:'var(--script)', prefab:'var(--prefab)', scene:'var(--scene)', note:'var(--note)' };
+const AUTOSAVE_KEY = 'claude-project-map-autosave-v1';
+
+const DEMO_DATA = {
+  project: "ExampleGame (demo data)",
+  generatedAt: "example",
+  nodes: [
+    {id:"scene:MainMenu", type:"scene", name:"MainMenu", file:"Assets/Scenes/MainMenu.unity",
+      description:"Title screen. Player picks New Game or Continue.", prefabs:["prefab:UIManager"], scripts:[], pos:{x:80,y:80}},
+    {id:"scene:Level1", type:"scene", name:"Level1", file:"Assets/Scenes/Level1.unity",
+      description:"First playable level — forest area with 3 enemy spawn points.", prefabs:["prefab:Player","prefab:Enemy","prefab:UIManager"], scripts:["script:GameManager"], pos:{x:80,y:280}},
+    {id:"prefab:Player", type:"prefab", name:"Player", file:"Assets/Prefabs/Player.prefab",
+      description:"Playable character. Has a rigidbody + capsule collider.", scripts:["script:PlayerController","script:Health"], pos:{x:460,y:80}},
+    {id:"prefab:Enemy", type:"prefab", name:"Enemy", file:"Assets/Prefabs/Enemy.prefab",
+      description:"Basic patrol-and-chase enemy.", scripts:["script:EnemyAI","script:Health"], pos:{x:460,y:280}},
+    {id:"prefab:UIManager", type:"prefab", name:"UIManager", file:"Assets/Prefabs/UIManager.prefab",
+      description:"Canvas with health bar, pause menu, and game-over screen.", scripts:["script:GameManager"], pos:{x:460,y:480}},
+    {id:"script:PlayerController", type:"script", name:"PlayerController", file:"Assets/Scripts/Player/PlayerController.cs",
+      baseClass:"MonoBehaviour", description:"Reads input, moves the rigidbody, handles jumping.", references:[], pos:{x:840,y:80}},
+    {id:"script:Health", type:"script", name:"Health", file:"Assets/Scripts/Shared/Health.cs",
+      baseClass:"MonoBehaviour", description:"Generic HP + damage/death events, used by player and enemies.", references:[], pos:{x:840,y:230}},
+    {id:"script:EnemyAI", type:"script", name:"EnemyAI", file:"Assets/Scripts/Enemies/EnemyAI.cs",
+      baseClass:"MonoBehaviour", description:"State machine: patrol → chase → attack.", references:["script:Health"], pos:{x:840,y:380}},
+    {id:"script:GameManager", type:"script", name:"GameManager", file:"Assets/Scripts/Core/GameManager.cs",
+      baseClass:"MonoBehaviour", description:"Tracks score, wins/losses, scene transitions.", references:[], pos:{x:840,y:530}},
+    {id:"note:demo1", type:"note", text:"Idea: add a dash move with a short cooldown + particle trail", color:"#ffe066", pos:{x:1180,y:60}},
+    {id:"note:demo2", type:"note", text:"Enemy should drop loot sometimes — hook into Health's death event", color:"#a8e6ff", pos:{x:1180,y:250}}
+  ]
+};
+
+let state = {
+  data: null,
+  scale: 1,
+  pan: {x:60, y:40},
+  fileHandle: null,
+  fileName: null,
+  isDemo: false,
+  categoryVisible: {script:true, prefab:true, scene:true, note:true},
+  search: '',
+  selectedId: null,
+  dirty: false,
+  drag: null,
+  panDrag: null,
+};
+
+const el = (sel) => document.querySelector(sel);
+const worldEl = el('#world');
+const svgEl = el('#edges-svg');
+const canvasWrap = el('#canvas-wrap');
+const emptyState = el('#empty-state');
+const bannerEl = el('#banner');
+const toastEl = el('#toast');
+const panelEl = el('#panel');
+
+/* ---------------- parsing / serializing ---------------- */
+
+function parseClaudeMd(text){
+  const m = text.match(/```json:project-data\s*\n([\s\S]*?)```/);
+  if(!m) return null;
+  try { return JSON.parse(m[1]); } catch(e){ console.error('Bad project-data JSON', e); return null; }
+}
+
+function nowStamp(){
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2,'0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+}
+
+function serializeToMarkdown(data){
+  const counts = {script:0, prefab:0, scene:0, note:0};
+  data.nodes.forEach(n => counts[n.type] = (counts[n.type]||0) + 1);
+  const generatedAt = nowStamp();
+  const out = {project: data.project, generatedAt, nodes: data.nodes};
+  let md = '';
+  md += `# Claude Project Map — ${data.project}\n\n`;
+  md += `_Last saved from the visual map on ${generatedAt}. Re-run \`generate_claude_md.py\` any time to pick up new scripts/prefabs/scenes — your descriptions and sticky notes are preserved._\n\n`;
+  md += `## How to use this file\nOpen \`index.html\` in this same folder in a browser to see this data as a draggable, zoomable visual map.\n\n`;
+  md += `## Summary\n- **Scripts:** ${counts.script||0}\n- **Prefabs:** ${counts.prefab||0}\n- **Scenes:** ${counts.scene||0}\n`;
+  if(counts.note) md += `- **Sticky notes:** ${counts.note}\n`;
+  md += `\n## Project data\n_(machine-readable — index.html reads this block; edit it by hand only if you're comfortable with JSON)_\n\n`;
+  md += '```json:project-data\n' + JSON.stringify(out, null, 2) + '\n```\n';
+  return md;
+}
+
+/* ---------------- loading ---------------- */
+
+function showEmptyError(msg){
+  const box = el('#empty-error');
+  box.innerHTML = msg;
+  box.classList.remove('hidden');
+  emptyState.classList.remove('hidden');
+}
+function clearEmptyError(){
+  el('#empty-error').classList.add('hidden');
+}
+
+function loadFromText(text, source){
+  const data = parseClaudeMd(text);
+  if(!data){
+    const looksGenerated = /project-data/i.test(text);
+    const msg = looksGenerated
+      ? `Found a <code>project-data</code> mention but couldn't parse the JSON inside it — the block may be corrupted. Try re-running <code>generate_claude_md.py</code>.`
+      : `<strong>This file doesn't have project map data in it.</strong><br>It looks like a CLAUDE.md that wasn't generated by <code>generate_claude_md.py</code> — this tool needs the <code>&#96;&#96;&#96;json:project-data</code> block that script creates.<br><br>From your Unity project root, run:<br><code>python3 ClaudeProjectMap/generate_claude_md.py .</code><br>then open the CLAUDE.md it writes.`;
+    showEmptyError(msg);
+    toast("Couldn't load that file — see the message on screen.");
+    return false;
+  }
+  clearEmptyError();
+  data.nodes.forEach(n => { if(!n.pos) n.pos = {x: (COL_X[n.type]||80), y: 80}; });
+  state.data = data;
+  state.isDemo = (source === 'demo');
+  state.dirty = false;
+  emptyState.classList.add('hidden');
+  el('#proj-name').textContent = state.isDemo ? (data.project + ' — example, not saved') : (data.project || 'CLAUDE.md');
+  updateBanner();
+  renderAll();
+  fitToContent();
+  return true;
+}
+
+async function tryAutoFetch(){
+  try{
+    const res = await fetch('./CLAUDE.md', {cache:'no-store'});
+    if(!res.ok) return false;
+    const text = await res.text();
+    state.fileName = 'CLAUDE.md';
+    return loadFromText(text, 'fetch');
+  }catch(e){ return false; }
+}
+
+function checkAutosave(){
+  try{
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if(!raw) return;
+    const saved = JSON.parse(raw);
+    if(!saved || !saved.nodes) return;
+    showBanner(
+      'You have unsaved local edits from a previous session.',
+      [
+        ['Restore', () => { state.data = saved; state.isDemo=false; emptyState.classList.add('hidden'); el('#proj-name').textContent = (saved.project||'CLAUDE.md') + ' (restored)'; renderAll(); fitToContent(); hideBanner(); }],
+        ['Discard', () => { localStorage.removeItem(AUTOSAVE_KEY); hideBanner(); }]
+      ]
+    );
+  }catch(e){ /* ignore */ }
+}
+
+async function openEditable(){
+  if(window.showOpenFilePicker){
+    try{
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description:'CLAUDE.md', accept: {'text/markdown': ['.md']} }]
+      });
+      const file = await handle.getFile();
+      const text = await file.text();
+      state.fileHandle = handle;
+      state.fileName = file.name;
+      loadFromText(text, 'handle');
+      toast('Opened ' + file.name + ' — Save will write straight back to it.');
+      return;
+    }catch(e){
+      if(e && e.name === 'AbortError') return;
+      // fall through to input fallback
+    }
+  }
+  el('#file-input').click();
+}
+
+function handleFileInputChange(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  state.fileHandle = null;
+  state.fileName = file.name;
+  const reader = new FileReader();
+  reader.onload = () => {
+    loadFromText(reader.result, 'input');
+    toast('Loaded ' + file.name + ' (read-only — Save will download an updated copy).');
+  };
+  reader.readAsText(file);
+}
+
+async function saveData(){
+  if(!state.data){ toast('Nothing to save yet.'); return; }
+  const text = serializeToMarkdown(state.data);
+  if(state.fileHandle){
+    try{
+      const writable = await state.fileHandle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      state.dirty = false;
+      localStorage.removeItem(AUTOSAVE_KEY);
+      toast('Saved to ' + state.fileHandle.name);
+      return;
+    }catch(e){
+      toast('Could not write directly — downloading instead.');
+    }
+  }
+  const blob = new Blob([text], {type:'text/markdown'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'CLAUDE.md'; a.click();
+  URL.revokeObjectURL(url);
+  state.dirty = false;
+  localStorage.removeItem(AUTOSAVE_KEY);
+  toast('Downloaded CLAUDE.md — replace the old one in your project folder.');
+}
+
+let autosaveTimer = null;
+function scheduleAutosave(){
+  state.dirty = true;
+  if(state.isDemo) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try{ localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state.data)); }catch(e){}
+  }, 700);
+}
+
+/* ---------------- banner / toast ---------------- */
+
+function showBanner(text, actions, isDemo){
+  bannerEl.innerHTML = '';
+  bannerEl.className = isDemo ? 'demo' : '';
+  const span = document.createElement('span');
+  span.textContent = text;
+  bannerEl.appendChild(span);
+  (actions||[]).forEach(([label, fn]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = fn;
+    bannerEl.appendChild(b);
+  });
+  bannerEl.classList.remove('hidden');
+}
+function hideBanner(){ bannerEl.classList.add('hidden'); }
+function updateBanner(){
+  if(state.isDemo){
+    showBanner('Showing example data — load your own CLAUDE.md to replace it.', [['Open CLAUDE.md', openEditable]], true);
+  } else {
+    hideBanner();
+  }
+}
+
+let toastTimer = null;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3200);
+}
+
+/* ---------------- edges ---------------- */
+
+function computeEdges(nodes){
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const edges = [];
+  nodes.forEach(n => {
+    if(n.type === 'prefab' && n.scripts) n.scripts.forEach(sid => { if(byId.has(sid)) edges.push({from:n.id, to:sid}); });
+    if(n.type === 'scene'){
+      (n.prefabs||[]).forEach(pid => { if(byId.has(pid)) edges.push({from:n.id, to:pid}); });
+      (n.scripts||[]).forEach(sid => { if(byId.has(sid)) edges.push({from:n.id, to:sid}); });
+    }
+    if(n.type === 'script' && n.references) n.references.forEach(rid => { if(byId.has(rid)) edges.push({from:n.id, to:rid}); });
+  });
+  return edges;
+}
+
+function nodesReferencing(id){
+  if(!state.data) return [];
+  return computeEdges(state.data.nodes).filter(e => e.to === id).map(e => e.from);
+}
+function nodesReferencedBy(id){
+  if(!state.data) return [];
+  return computeEdges(state.data.nodes).filter(e => e.from === id).map(e => e.to);
+}
+
+/* ---------------- rendering ---------------- */
+
+function cardSize(n){
+  if(n._w && n._h) return {w:n._w, h:n._h};
+  return n.type === 'note' ? {w:190,h:140} : {w:CARD_W,h:CARD_H};
+}
+
+function renderAll(){
+  if(!state.data) return;
+  worldEl.querySelectorAll('.node').forEach(n => n.remove());
+
+  const q = state.search.trim().toLowerCase();
+  const visibleNodes = state.data.nodes.filter(n => state.categoryVisible[n.type] !== false);
+  const matchIds = new Set();
+  if(q){
+    state.data.nodes.forEach(n => {
+      const hay = ((n.name||'') + ' ' + (n.file||'') + ' ' + (n.description||'') + ' ' + (n.text||'')).toLowerCase();
+      if(hay.includes(q)) matchIds.add(n.id);
+    });
+  }
+
+  visibleNodes.forEach(n => {
+    const {w,h} = cardSize(n);
+    const card = document.createElement('div');
+    card.dataset.id = n.id;
+    card.style.left = n.pos.x + 'px';
+    card.style.top = n.pos.y + 'px';
+    card.style.width = w + 'px';
+
+    if(n.type === 'note'){
+      card.className = 'node node-note';
+      if(n.color) card.style.background = n.color;
+      if(q && !matchIds.has(n.id)) card.classList.add('dim');
+      card.innerHTML = `
+        <div class="note-text" contenteditable="true" spellcheck="false"></div>
+        <div class="note-toolbar">
+          <button class="note-color" title="Yellow" style="background:#ffe066"></button>
+          <button class="note-color" title="Blue" style="background:#a8e6ff"></button>
+          <button class="note-color" title="Pink" style="background:#ffb3d1"></button>
+          <button class="note-del" title="Delete">✕</button>
+        </div>`;
+      card.querySelector('.note-text').textContent = n.text || '';
+      card.querySelector('.note-text').addEventListener('input', (e) => { n.text = e.target.textContent; scheduleAutosave(); });
+      card.querySelector('.note-text').addEventListener('pointerdown', (e) => e.stopPropagation());
+      card.querySelectorAll('.note-color').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); n.color = btn.style.background; card.style.background = n.color; scheduleAutosave(); });
+      });
+      card.querySelector('.note-del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.data.nodes = state.data.nodes.filter(x => x.id !== n.id);
+        scheduleAutosave(); renderAll();
+      });
+    } else {
+      card.className = 'node node-' + n.type;
+      if(q && matchIds.has(n.id)) card.classList.add('match');
+      if(q && !matchIds.has(n.id)) card.classList.add('dim');
+      if(state.selectedId === n.id) card.classList.add('selected');
+      const desc = (n.description||'').trim();
+      card.innerHTML = `
+        <div class="node-row node-row-head">
+          <span class="node-type-tag">${n.type}${n.baseClass ? ' · ' + escapeHtml(n.baseClass) : ''}</span>
+        </div>
+        <div class="node-row node-row-name node-name">${escapeHtml(n.name || n.file || n.id)}</div>
+      `;
+      card.title = desc || 'No description yet — click to add one.';
+      card.addEventListener('click', (e) => {
+        if(suppressNextClick){ suppressNextClick = false; return; }
+        openPanel(n.id);
+      });
+    }
+
+    attachDrag(card, n);
+    worldEl.appendChild(card);
+    n._w = card.offsetWidth;
+    n._h = card.offsetHeight;
+  });
+
+  renderEdges(visibleNodes);
+  renderLegend();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderEdges(visibleNodes){
+  const visibleIds = new Set(visibleNodes.map(n => n.id));
+  const byId = new Map(state.data.nodes.map(n => [n.id, n]));
+  const edges = computeEdges(state.data.nodes).filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+
+  let maxX = 1600, maxY = 1000;
+  state.data.nodes.forEach(n => {
+    const {w,h} = cardSize(n);
+    maxX = Math.max(maxX, n.pos.x + w + 200);
+    maxY = Math.max(maxY, n.pos.y + h + 200);
+  });
+  svgEl.setAttribute('width', maxX);
+  svgEl.setAttribute('height', maxY);
+  worldEl.style.width = maxX + 'px';
+  worldEl.style.height = maxY + 'px';
+
+  const q = state.search.trim().toLowerCase();
+  let html = '';
+  edges.forEach(e => {
+    const from = byId.get(e.from), to = byId.get(e.to);
+    if(!from || !to) return;
+    const fw = cardSize(from), tw = cardSize(to);
+    const x1 = from.pos.x + fw.w, y1 = from.pos.y + fw.h/2;
+    const x2 = to.pos.x, y2 = to.pos.y + tw.h/2;
+    const midX = (x1 + x2) / 2;
+    const dim = q ? '' : '';
+    html += `<path d="M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--trace)" stroke-width="1.4" />`;
+  });
+  svgEl.innerHTML = `<defs></defs>` + html;
+}
+
+function renderLegend(){
+  const legend = el('#legend');
+  legend.innerHTML = '';
+  const labels = {script:'Scripts', prefab:'Prefabs', scene:'Scenes', note:'Notes'};
+  const colors = {script:'var(--script)', prefab:'var(--prefab)', scene:'var(--scene)', note:'var(--note)'};
+  Object.keys(labels).forEach(type => {
+    const count = state.data.nodes.filter(n => n.type === type).length;
+    const chip = document.createElement('div');
+    chip.className = 'legend-chip' + (state.categoryVisible[type] === false ? ' off' : '');
+    chip.innerHTML = `<span class="swatch" style="background:${colors[type]}"></span>${labels[type]} (${count})`;
+    chip.addEventListener('click', () => {
+      state.categoryVisible[type] = !state.categoryVisible[type];
+      renderAll();
+    });
+    legend.appendChild(chip);
+  });
+}
+
+/* ---------------- pan / zoom ---------------- */
+
+function applyTransform(){
+  worldEl.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.scale})`;
+  el('#zoom-pct').textContent = Math.round(state.scale * 100) + '%';
+}
+
+function fitToContent(){
+  state.pan = {x: 60, y: 40};
+  state.scale = 1;
+  applyTransform();
+}
+
+canvasWrap.addEventListener('pointerdown', (e) => {
+  if(e.target.closest('.node')) return;
+  state.panDrag = { startX: e.clientX, startY: e.clientY, panX: state.pan.x, panY: state.pan.y };
+  canvasWrap.classList.add('panning');
+  closePanel();
+});
+window.addEventListener('pointermove', (e) => {
+  if(state.panDrag){
+    const dx = e.clientX - state.panDrag.startX;
+    const dy = e.clientY - state.panDrag.startY;
+    state.pan.x = state.panDrag.panX + dx;
+    state.pan.y = state.panDrag.panY + dy;
+    applyTransform();
+  }
+});
+window.addEventListener('pointerup', () => { state.panDrag = null; canvasWrap.classList.remove('panning'); });
+
+canvasWrap.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = canvasWrap.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  const wx = (cx - state.pan.x) / state.scale;
+  const wy = (cy - state.pan.y) / state.scale;
+  const factor = Math.exp(-e.deltaY * 0.001);
+  const newScale = Math.min(2.5, Math.max(0.25, state.scale * factor));
+  state.pan.x = cx - wx * newScale;
+  state.pan.y = cy - wy * newScale;
+  state.scale = newScale;
+  applyTransform();
+}, {passive:false});
+
+el('#zoom-in').addEventListener('click', () => { state.scale = Math.min(2.5, state.scale*1.15); applyTransform(); });
+el('#zoom-out').addEventListener('click', () => { state.scale = Math.max(0.25, state.scale/1.15); applyTransform(); });
+el('#zoom-fit').addEventListener('click', fitToContent);
+
+/* ---------------- node dragging ---------------- */
+
+// Survives past pointerup (which clears state.drag) so the click handler
+// that fires right after can tell a drag apart from a genuine click.
+let suppressNextClick = false;
+
+function attachDrag(cardEl, node){
+  cardEl.addEventListener('pointerdown', (e) => {
+    if(e.target.closest('.note-toolbar') || e.target.isContentEditable) return;
+    e.stopPropagation();
+    cardEl.classList.add('dragging');
+    suppressNextClick = false;
+    state.drag = {
+      node, cardEl,
+      startClientX: e.clientX, startClientY: e.clientY,
+      startX: node.pos.x, startY: node.pos.y,
+      moved: false,
+    };
+    closePanel();
+  });
+}
+window.addEventListener('pointermove', (e) => {
+  const d = state.drag;
+  if(!d) return;
+  const dx = (e.clientX - d.startClientX) / state.scale;
+  const dy = (e.clientY - d.startClientY) / state.scale;
+  if(Math.abs(dx) > 2 || Math.abs(dy) > 2){ d.moved = true; suppressNextClick = true; }
+  d.node.pos.x = d.startX + dx;
+  d.node.pos.y = d.startY + dy;
+  d.cardEl.style.left = d.node.pos.x + 'px';
+  d.cardEl.style.top = d.node.pos.y + 'px';
+  renderEdges(state.data.nodes.filter(n => state.categoryVisible[n.type] !== false));
+});
+window.addEventListener('pointerup', () => {
+  if(state.drag){
+    state.drag.cardEl.classList.remove('dragging');
+    if(state.drag.moved) scheduleAutosave();
+    state.drag = null;
+  }
+});
+
+/* ---------------- detail panel ---------------- */
+
+function openPanel(id){
+  const n = state.data.nodes.find(x => x.id === id);
+  if(!n) return;
+  state.selectedId = id;
+  renderAll();
+  panelEl.classList.add('open');
+  el('#panel-type').textContent = n.type;
+  el('#panel-type').style.background = ({script:'var(--script-soft)',prefab:'var(--prefab-soft)',scene:'var(--scene-soft)'})[n.type] || 'transparent';
+  el('#panel-type').style.color = TYPE_COLOR[n.type] || 'inherit';
+  el('#panel-name').textContent = n.name || n.file || n.id;
+
+  const referencedBy = nodesReferencing(id).map(rid => state.data.nodes.find(x=>x.id===rid)).filter(Boolean);
+  const references = nodesReferencedBy(id).map(rid => state.data.nodes.find(x=>x.id===rid)).filter(Boolean);
+
+  const body = el('#panel-body');
+  body.innerHTML = `
+    <label>File path</label>
+    <div id="panel-path">${escapeHtml(n.file || '—')}</div>
+    <label>Description</label>
+    <textarea id="panel-desc" placeholder="What does this do?">${escapeHtml(n.description||'')}</textarea>
+    <label>Used by / contained in</label>
+    <div class="chip-list" id="panel-refby"></div>
+    <label>References / contains</label>
+    <div class="chip-list" id="panel-refs"></div>
+  `;
+  el('#panel-desc').addEventListener('input', (e) => { n.description = e.target.value; scheduleAutosave(); });
+
+  const refByEl = el('#panel-refby');
+  if(referencedBy.length === 0) refByEl.innerHTML = `<div class="empty-note">Nothing else references this yet.</div>`;
+  referencedBy.forEach(r => refByEl.appendChild(makeChip(r)));
+
+  const refsEl = el('#panel-refs');
+  if(references.length === 0) refsEl.innerHTML = `<div class="empty-note">Doesn't reference anything else.</div>`;
+  references.forEach(r => refsEl.appendChild(makeChip(r)));
+}
+
+function makeChip(n){
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.innerHTML = `<span class="swatch" style="background:${TYPE_COLOR[n.type]||'#888'}"></span>${escapeHtml(n.name||n.file)}`;
+  chip.addEventListener('click', () => openPanel(n.id));
+  return chip;
+}
+
+function closePanel(){
+  state.selectedId = null;
+  panelEl.classList.remove('open');
+}
+el('#panel-close').addEventListener('click', closePanel);
+
+/* ---------------- toolbar actions ---------------- */
+
+el('#btn-open').addEventListener('click', openEditable);
+el('#btn-open-2').addEventListener('click', openEditable);
+el('#file-input').addEventListener('change', handleFileInputChange);
+el('#btn-save').addEventListener('click', saveData);
+el('#btn-demo').addEventListener('click', () => loadFromText(wrapDemo(), 'demo'));
+
+function wrapDemo(){
+  return '```json:project-data\n' + JSON.stringify(DEMO_DATA, null, 2) + '\n```';
+}
+
+el('#btn-note').addEventListener('click', () => {
+  if(!state.data){ toast('Load a CLAUDE.md (or the example) first.'); return; }
+  const rect = canvasWrap.getBoundingClientRect();
+  const cx = (rect.width/2 - state.pan.x) / state.scale;
+  const cy = (rect.height/2 - state.pan.y) / state.scale;
+  const note = {
+    id: 'note:' + Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    type: 'note', text: 'New idea…', color: '#ffe066',
+    pos: {x: cx - 95, y: cy - 70}
+  };
+  state.data.nodes.push(note);
+  scheduleAutosave();
+  renderAll();
+});
+
+el('#btn-reset-layout').addEventListener('click', () => {
+  if(!state.data) return;
+  const counters = {script:0, prefab:0, scene:0};
+  state.data.nodes.forEach(n => {
+    if(n.type === 'note') return;
+    const idx = counters[n.type] || 0;
+    n.pos = {x: COL_X[n.type], y: ROW_START + idx * ROW_GAP};
+    counters[n.type] = idx + 1;
+  });
+  scheduleAutosave();
+  renderAll();
+  fitToContent();
+});
+
+let searchTimer = null;
+el('#search').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  const v = e.target.value;
+  searchTimer = setTimeout(() => { state.search = v; renderAll(); }, 120);
+});
+
+/* ---------------- drag & drop ---------------- */
+
+const dropzone = el('#dropzone');
+['dragover','dragenter'].forEach(evt => canvasWrap.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add('hover'); }));
+['dragleave','drop'].forEach(evt => canvasWrap.addEventListener(evt, () => dropzone.classList.remove('hover')));
+canvasWrap.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if(!file) return;
+  state.fileHandle = null;
+  state.fileName = file.name;
+  const reader = new FileReader();
+  reader.onload = () => { loadFromText(reader.result, 'drop'); toast('Loaded ' + file.name); };
+  reader.readAsText(file);
+});
+
+/* ---------------- init ---------------- */
+
+async function init(){
+  const ok = await tryAutoFetch();
+  if(!ok) checkAutosave();
+}
+init();
+
+})();
+</script>
+</body>
+</html>
